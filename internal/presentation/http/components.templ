@@ -1,0 +1,70 @@
+package http
+
+import "github.com/ofm-microservices/ofm-experiment-service/internal/application"
+import "fmt"
+
+templ Home(data DashboardData) {
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>OFM Experiment Service</title><script src="https://unpkg.com/htmx.org@2.0.4"></script><style>body{margin:0;background:#f4f6f8;color:#17202a;font-family:system-ui,sans-serif}main{max-width:1500px;margin:0 auto;padding:42px 24px;text-align:left}h1{text-align:center}.toolbar{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:16px;margin:28px 0;text-align:left}.toolbar label{display:flex;flex-direction:column;gap:6px;font-size:14px}.toolbar input,.toolbar select,.toolbar button{padding:9px 12px;border:1px solid #c8d0d8;border-radius:6px;font:inherit;background:#fff}.toolbar .section{grid-column:1/-1;color:#9a3412;font-size:16px;font-weight:700;border-bottom:2px solid #fed7aa;padding-bottom:8px;margin-top:6px}.toolbar .wide{grid-column:span 2}.toolbar .check{flex-direction:row;align-items:center;padding-top:26px}.toolbar button{grid-column:1/-1;background:#1769aa;color:white;border:0;cursor:pointer;height:44px;font-weight:600}.search{display:flex;gap:10px;align-items:end;margin:22px 0}.search label{display:flex;flex-direction:column;gap:6px;flex:1}.search input{padding:10px 12px;border:1px solid #c8d0d8;border-radius:6px;font:inherit}.button{display:inline-block;padding:9px 12px;border:0;border-radius:6px;background:#1769aa;color:white;text-decoration:none;font:inherit;cursor:pointer}.columns{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(360px,1fr);gap:20px;align-items:start}.panel{background:#fff;border:1px solid #dfe5ea;border-radius:10px;padding:18px;box-shadow:0 2px 8px #0001;overflow:auto}.panel h2{margin:0 0 14px}.panel table{box-shadow:none}table{width:100%;border-collapse:collapse;background:white;text-align:left}th,td{padding:10px;border-bottom:1px solid #e5e7eb;white-space:nowrap}.state{font-weight:700}.PASS{color:#18794e}.FAIL,.FAILED{color:#b42318}.RUNNING{color:#9a6700}a{color:#1769aa}.muted{color:#667085;font-size:13px}@media(max-width:1050px){.columns{grid-template-columns:1fr}.toolbar{grid-template-columns:repeat(2,minmax(150px,1fr))}.toolbar .wide{grid-column:span 2}}@media(max-width:560px){.toolbar{grid-template-columns:1fr}.toolbar .wide{grid-column:span 1}.search{display:block}.search .button{margin-top:8px}}</style></head><body><main>
+<style>.pagination{display:flex;justify-content:center;align-items:center;gap:12px;min-height:44px;margin-top:16px}.pagination .button{min-width:82px;text-align:center}.empty-row td{height:42px;padding:0;border-bottom:1px solid #e5e7eb}</style>
+<h1>OFM Experiment Service</h1>
+ <form class="toolbar" hx-post="/runs" hx-target="#dashboard-tables" hx-swap="outerHTML">
+<input name="workload" type="hidden" value="full-system"/><input name="profile" type="hidden" value="mixed"/>
+<label>Read RPS<input name="read_rps" type="number" min="0" value="10"/></label><label>Write RPS<input name="write_rps" type="number" min="0" value="3"/></label>
+<label>Minutes<input name="minutes" type="number" min="1" value="5"/></label>
+<label class="section">Fault injection and recovery</label>
+<label>Fault profile<select name="fault_profile"><option value="none">None</option><option value="service-down">Service down (k3d controller)</option><option value="delay">Delay</option><option value="error">Error</option><option value="mixed" selected>Mixed</option></select></label><label>Fault target<input name="fault_target" value="gig-service"/></label><label>Error rate %<input name="fault_rate" type="number" min="0" max="100" step="0.1" value="5"/></label>
+<button type="submit">Start experiment</button></form>
+<script>document.addEventListener('change',function(e){if(e.target.name==='fault_profile'&&e.target.value==='service-down'){document.querySelector('[name="fault_target"]').value='search-service';}});</script>
+<form class="search" hx-get="/runs" hx-target="#dashboard-tables" hx-trigger="submit, keyup changed delay:300ms from:#run-search"><label>Search experiment runs by ID<input id="run-search" name="query" value={ data.Query } placeholder="01a0..." autocomplete="off"/></label><input type="hidden" name="page" value="1"/><button class="button" type="submit">Search</button></form>
+@DashboardTables(data)
+</main></body></html>
+}
+
+templ DashboardTables(data DashboardData) {
+<div id="dashboard-tables" hx-get={ dashboardURL(data.Query, data.Page) } hx-trigger="every 5s" hx-select="#dashboard-tables" hx-swap="outerHTML"><section class="panel"><h2>Experiment runs</h2><table><thead><tr><th>Run ID</th><th>Started</th><th>Verdict</th><th>Checks failed</th><th>Projection failures</th><th>Flows</th></tr></thead><tbody>
+for _, run := range data.Runs {
+<tr><td><a href={ templ.URL("/runs/"+run.RunID) }>{ run.RunID }</a></td><td>{ run.StartedAt }</td><td class={ "state "+run.Verdict }>{ run.Verdict }</td><td>{ fmt.Sprint(run.ChecksFailed) }</td><td>{ fmt.Sprint(run.ProjectionFailures) }</td><td>{ fmt.Sprint(run.CompletedFlows) }</td></tr>
+}
+for i := len(data.Runs); i < dashboardPageSize; i++ {
+<tr class="empty-row" aria-hidden="true"><td colspan="6">&nbsp;</td></tr>
+}
+</tbody></table><nav class="pagination" aria-label="Experiment run pages">
+if data.HasPrevious {
+<a class="button" hx-get={ dashboardURL(data.Query, data.Page-1) } hx-push-url={ dashboardURL(data.Query, data.Page-1) } hx-target="#dashboard-tables" hx-select="#dashboard-tables" hx-swap="outerHTML" href={ templ.URL(dashboardURL(data.Query, data.Page-1)) }>Previous</a>
+}
+<span>Page { fmt.Sprint(data.Page) }</span>
+if data.HasNext {
+<a class="button" hx-get={ dashboardURL(data.Query, data.Page+1) } hx-push-url={ dashboardURL(data.Query, data.Page+1) } hx-target="#dashboard-tables" hx-select="#dashboard-tables" hx-swap="outerHTML" href={ templ.URL(dashboardURL(data.Query, data.Page+1)) }>Next</a>
+}
+</nav></section></div>
+}
+
+templ Button(label string, method string, target string) { <button class="button" hx-delete={ method } hx-confirm="Stop this experiment?" hx-target={ target } hx-swap="outerHTML">{ label }</button> }
+templ LinkButton(label string, href string) { <a class="button button-link" href={ templ.URL(href) } target="_blank" rel="noopener">{ label }</a> }
+
+templ RunDetails(run application.Run, payload string) {
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Experiment — { run.Verdict }</title><style>body{margin:0;background:#f4f6f8;font-family:system-ui,sans-serif}main{max-width:900px;margin:0 auto;padding:48px 24px;text-align:center}pre{padding:20px;background:#17202a;color:#e8eef2;border-radius:8px;text-align:left;overflow:auto}.button{display:inline-block;padding:9px 12px;border-radius:6px;background:#1769aa;color:white;text-decoration:none;margin:4px}a{color:#1769aa}.PASS{color:#18794e}.FAIL{color:#b42318}</style></head><body>@RunDetailsContent(run,payload)</body></html>
+}
+
+templ RunDetailsContent(run application.Run, payload string) {
+<main><h1>Experiment — <span class={ "state "+run.Verdict }>{ run.Verdict }</span></h1><p>Run ID: { run.RunID }</p><p>Checks failed: { fmt.Sprint(run.ChecksFailed) } · Projection failures: { fmt.Sprint(run.ProjectionFailures) } · Completed flows: { fmt.Sprint(run.CompletedFlows) }</p><p><a class="button" href={ templ.URL("http://grafana.localhost/d/ofm-experiments?var-run_id="+run.RunID) }>Open in Grafana</a></p><pre>{ payload }</pre><p><a href="/">Back to runner</a></p></main>
+}
+
+templ Details(job application.Job, payload string) {
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Experiment — { job.State }</title><script src="https://unpkg.com/htmx.org@2.0.4"></script><style>body{margin:0;background:#f4f6f8;font-family:system-ui,sans-serif}main{max-width:760px;margin:0 auto;padding:48px 24px;text-align:center}pre{padding:20px;background:#17202a;color:#e8eef2;border-radius:8px;text-align:left;overflow:auto}.button{display:inline-block;padding:9px 12px;border-radius:6px;background:#1769aa;color:white;text-decoration:none;margin:4px}a{color:#1769aa}</style></head><body>@DetailsContent(job,payload)</body></html>
+}
+
+templ DetailsContent(job application.Job, payload string) {
+<main hx-get={ "/runs/"+job.Name } hx-trigger="every 1s" hx-target="this" hx-swap="outerHTML"><h1>Experiment — <span class={ "state "+job.State }>{ job.State }</span></h1><p>{ job.Message }</p><p>@LinkButton("Open in Grafana", "http://grafana.localhost/d/ofm-experiments?var-run_id="+job.RunID)</p>
+if job.State == "PENDING" || job.State == "RUNNING" {
+if job.DurationSeconds > 0 {
+<p>Time remaining: { fmt.Sprint(job.RemainingSeconds) } seconds</p>
+} else {
+<p>Capacity ramp-up in progress — waiting for the 90% CPU limit.</p>
+}
+}
+if job.State == "PENDING" || job.State == "RUNNING" {
+@Button("Stop", "/runs/"+job.Name, "main")
+}
+<pre>{ payload }</pre><p><a href="/">Back to runner</a></p></main>
+}
